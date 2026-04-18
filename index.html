@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essayage Virtuel - Chapeau</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Essayage Virtuel</h2>
+        <p>Chargement du modèle...</p>
+    </div>
+
+    <!-- Ici, Three.js va créer le canvas automatiquement -->
+
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@r128/build/three.module.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@r128/examples/jsm/loaders/GLTFLoader.js';
+
+        // Initialiser la scène Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // URL du modèle depuis GitHub
+        const modelURL = 'https://raw.githubusercontent.com/chapellerievictor83/chapeau/main/models/test.glb';
+
+        // Charger le modèle GLB
+        const loader = new GLTFLoader();
+        loader.load(
+            modelURL,
+            (gltf) => {
+                const model = gltf.scene;
+                scene.add(model);
+                document.getElementById('info').innerHTML += '<p>✅ Modèle chargé !</p>';
+                console.log('Modèle chargé !');
+            },
+            undefined,
+            (error) => {
+                console.error('Erreur de chargement :', error);
+                document.getElementById('info').innerHTML += '<p>❌ Erreur de chargement</p>';
+            }
+        );
+
+        // Ajouter une lumière
+        const light = new THREE.AmbientLight(0xffffff, 1);
+        scene.add(light);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        // Positionner la caméra
+        camera.position.z = 2;
+
+        // Animer
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Gérer le redimensionnement de la fenêtre
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

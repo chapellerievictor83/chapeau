@@ -3,38 +3,239 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Viewer GLB</title>
+  <title>Diagnostic GLB</title>
   <style>
     html, body {
       margin: 0;
       width: 100%;
       height: 100%;
-      overflow: hidden;
-      background: #1a1a1a;
+      background: #111;
+      color: #fff;
       font-family: Arial, sans-serif;
     }
 
-    #canvas {
-      display: block;
+    #wrap {
+      display: grid;
+      grid-template-columns: 420px 1fr;
       width: 100%;
       height: 100%;
     }
 
-    #ui {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      z-index: 10;
-      color: white;
-      background: rgba(0,0,0,0.6);
-      padding: 12px;
-      border-radius: 12px;
-      max-width: 360px;
-      line-height: 1.4;
+    #left {
+      padding: 16px;
+      background: #1b1b1b;
+      overflow: auto;
+      box-sizing: border-box;
+      border-right: 1px solid #333;
     }
+
+    #right {
+      position: relative;
+      overflow: hidden;
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0d0d0d;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .ok { color: #7CFC98; }
+    .bad { color: #ff8b8b; }
+    .warn { color: #ffd27a; }
   </style>
 </head>
 <body>
+  <div id="wrap">
+    <div id="left">
+      <button id="runBtn">Lancer le diagnostic</button>
+      <div id="summary"></div>
+      <pre id="log">En attente…</pre>
+    </div>
+    <div id="right">
+      <canvas id="canvas"></canvas>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.164.1/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.164.1/examples/jsm/loaders/GLTFLoader.js';
+
+    // Mets ici l’URL que tu testes
+    const MODEL_URL = 'https://raw.githubusercontent.com/chapellerievictor83/chapeau/main/models/test.glb';
+
+    const logEl = document.getElementById('log');
+    const summaryEl = document.getElementById('summary');
+    const runBtn = document.getElementById('runBtn');
+    const canvas = document.getElementById('canvas');
+
+    function log(txt) {
+      logEl.textContent += '\\n' + txt;
+    }
+
+    function setSummary(html) {
+      summaryEl.innerHTML = html;
+    }
+
+    // ---------------- THREE
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth - 420, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+
+    const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 420) / window.innerHeight, 0.01, 100);
+    camera.position.set(0, 0.2, 2);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    scene.add(new THREE.AmbientLight(0xffffff, 2.2));
+
+    const dir1 = new THREE.DirectionalLight(0xffffff, 1.2);
+    dir1.position.set(2, 2, 2);
+    scene.add(dir1);
+
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir2.position.set(-2, 1, -1);
+    scene.add(dir2);
+
+    scene.add(new THREE.GridHelper(4, 20, 0x666666, 0x333333));
+
+    function animate() {
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      const width = Math.max(window.innerWidth - 420, 200);
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    });
+
+    async function inspectUrl(url) {
+      log('URL testée : ' + url);
+
+      const res = await fetch(url, { cache: 'no-store' });
+      log('HTTP status : ' + res.status + ' ' + res.statusText);
+
+      const contentType = res.headers.get('content-type');
+      const contentLength = res.headers.get('content-length');
+      const contentDisposition = res.headers.get('content-disposition');
+
+      log('content-type : ' + contentType);
+      log('content-length : ' + contentLength);
+      log('content-disposition : ' + contentDisposition);
+
+      const buffer = await res.arrayBuffer();
+      log('octets reçus : ' + buffer.byteLength);
+
+      const bytes = new Uint8Array(buffer.slice(0, 64));
+      const ascii = Array.from(bytes)
+        .map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.')
+        .join('');
+      const hex = Array.from(bytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ');
+
+      log('premiers octets (ascii) : ' + ascii);
+      log('premiers octets (hex)   : ' + hex);
+
+      let diagnosis = [];
+
+      if (ascii.includes('version https://git-lfs.github.com/spec/v1')) {
+        diagnosis.push('<div class="bad">Le fichier servi est un pointeur Git LFS, pas le vrai GLB.</div>');
+      }
+
+      if (ascii.startsWith('<!DOCTYPE html') || ascii.startsWith('<html')) {
+        diagnosis.push('<div class="bad">L’URL renvoie du HTML, pas un modèle 3D.</div>');
+      }
+
+      if (contentType && contentType.includes('text/html')) {
+        diagnosis.push('<div class="bad">Le content-type indique une page HTML.</div>');
+      }
+
+      if (buffer.byteLength < 1000) {
+        diagnosis.push('<div class="warn">Le fichier paraît très petit. Possible mauvais fichier ou pointeur.</div>');
+      }
+
+      if (diagnosis.length === 0) {
+        diagnosis.push('<div class="ok">L’URL semble renvoyer un vrai fichier binaire exploitable.</div>');
+      }
+
+      setSummary(diagnosis.join(''));
+      return buffer;
+    }
+
+    async function tryLoadWithThree(url) {
+      return new Promise((resolve, reject) => {
+        const loader = new GLTFLoader();
+        loader.load(
+          url,
+          (gltf) => {
+            const model = gltf.scene;
+            scene.add(model);
+
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+
+            model.position.sub(center);
+
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            model.scale.setScalar(1 / maxDim);
+
+            log('GLTFLoader : modèle chargé avec succès');
+            resolve();
+          },
+          undefined,
+          (error) => {
+            console.error(error);
+            log('GLTFLoader erreur : ' + (error?.message || error));
+            reject(error);
+          }
+        );
+      });
+    }
+
+    runBtn.addEventListener('click', async () => {
+      logEl.textContent = 'Diagnostic en cours...';
+      setSummary('');
+
+      try {
+        await inspectUrl(MODEL_URL);
+        await tryLoadWithThree(MODEL_URL);
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  </script>
+</body>
+</html><body>
   <canvas id="canvas"></canvas>
 
   <div id="ui">
